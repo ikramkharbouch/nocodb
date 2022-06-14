@@ -34,13 +34,13 @@ import Hook from '../../../../models/Hook';
 import NcPluginMgrv2 from '../../../../meta/helpers/NcPluginMgrv2';
 import {
   _transformSubmittedFormDataForEmail,
-  invokeWebhook,
-  parseBody
+  invokeWebhook
 } from '../../../../meta/helpers/webhookHelpers';
 import Validator from 'validator';
 import { customValidators } from './customValidators';
 import { NcError } from '../../../../meta/helpers/catchError';
 import { customAlphabet } from 'nanoid';
+import DOMPurify from 'isomorphic-dompurify';
 
 const GROUP_COL = '__nc_group_id';
 
@@ -69,7 +69,7 @@ class BaseModelSqlv2 {
   private _proto: any;
   private _columns = {};
 
-  public static config: any = {
+  private config: any = {
     limitDefault: Math.max(+process.env.DB_QUERY_LIMIT_DEFAULT || 25, 1),
     limitMin: Math.max(+process.env.DB_QUERY_LIMIT_MIN || 1, 1),
     limitMax: Math.max(+process.env.DB_QUERY_LIMIT_MAX || 1000, 1)
@@ -1169,7 +1169,22 @@ class BaseModelSqlv2 {
   }
 
   _getListArgs(args: XcFilterWithAlias): XcFilter {
-    return getListArgs(args, this.model);
+    const obj: XcFilter = {};
+    obj.where = args.where || args.w || '';
+    obj.having = args.having || args.h || '';
+    obj.condition = args.condition || args.c || {};
+    obj.conditionGraph = args.conditionGraph || {};
+    obj.limit = Math.max(
+      Math.min(
+        args.limit || args.l || this.config.limitDefault,
+        this.config.limitMax
+      ),
+      this.config.limitMin
+    );
+    obj.offset = Math.max(+(args.offset || args.o) || 0, 0);
+    obj.fields = args.fields || args.f || '*';
+    obj.sort = args.sort || args.s || this.model.primaryKey?.[0]?.tn;
+    return obj;
   }
 
   public async selectObject({ qb }: { qb: QueryBuilder }): Promise<void> {
@@ -1702,7 +1717,9 @@ class BaseModelSqlv2 {
       row_id: id,
       op_type: AuditOperationTypes.DATA,
       op_sub_type: AuditOperationSubTypes.INSERT,
-      description: `${id} inserted into ${this.model.title}`,
+      description: DOMPurify.sanitize(
+        `${id} inserted into ${this.model.title}`
+      ),
       // details: JSON.stringify(data),
       ip: req?.clientIp,
       user: req?.user?.email
@@ -1746,7 +1763,7 @@ class BaseModelSqlv2 {
       row_id: id,
       op_type: AuditOperationTypes.DATA,
       op_sub_type: AuditOperationSubTypes.DELETE,
-      description: `${id} deleted from ${this.model.title}`,
+      description: DOMPurify.sanitize(`${id} deleted from ${this.model.title}`),
       // details: JSON.stringify(data),
       ip: req?.clientIp,
       user: req?.user?.email
@@ -1776,7 +1793,7 @@ class BaseModelSqlv2 {
           // todo: notification template
           (await NcPluginMgrv2.emailAdapter())?.mailSend({
             to: emails.join(','),
-            subject: parseBody('NocoDB Form', req, data, {}),
+            subject: 'NocoDB Form',
             html: ejs.render(formSubmissionEmailTemplate, {
               data: transformedData,
               tn: this.model.table_name,
@@ -2020,7 +2037,7 @@ class BaseModelSqlv2 {
   }
 }
 
-export function extractSortsObject(
+function extractSortsObject(
   _sorts: string | string[],
   aliasColObjMap: { [columnAlias: string]: Column }
 ): Sort[] | void {
@@ -2041,7 +2058,7 @@ export function extractSortsObject(
   });
 }
 
-export function extractFilterFromXwhere(
+function extractFilterFromXwhere(
   str,
   aliasColObjMap: { [columnAlias: string]: Column }
 ) {
@@ -2153,25 +2170,6 @@ function getCompositePk(primaryKeys: Column[], row) {
 
 export function sanitize(v) {
   return v?.replace(/([^\\]|^)([?])/g, '$1\\$2');
-}
-
-export function getListArgs(args: XcFilterWithAlias, model: Model): XcFilter {
-  const obj: XcFilter = {};
-  obj.where = args.where || args.w || '';
-  obj.having = args.having || args.h || '';
-  obj.condition = args.condition || args.c || {};
-  obj.conditionGraph = args.conditionGraph || {};
-  obj.limit = Math.max(
-    Math.min(
-      args.limit || args.l || BaseModelSqlv2.config.limitDefault,
-      BaseModelSqlv2.config.limitMax
-    ),
-    BaseModelSqlv2.config.limitMin
-  );
-  obj.offset = Math.max(+(args.offset || args.o) || 0, 0);
-  obj.fields = args.fields || args.f || '*';
-  obj.sort = args.sort || args.s || model?.primaryKey?.[0]?.tn;
-  return obj;
 }
 
 export { BaseModelSqlv2 };
