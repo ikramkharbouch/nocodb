@@ -34,8 +34,7 @@ import Hook from '../../../../models/Hook';
 import NcPluginMgrv2 from '../../../../meta/helpers/NcPluginMgrv2';
 import {
   _transformSubmittedFormDataForEmail,
-  invokeWebhook,
-  parseBody
+  invokeWebhook
 } from '../../../../meta/helpers/webhookHelpers';
 import Validator from 'validator';
 import { customValidators } from './customValidators';
